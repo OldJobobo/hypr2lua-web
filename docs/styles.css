@@ -30,10 +30,7 @@ body {
   margin: 0;
   background:
     linear-gradient(180deg, rgba(108, 198, 176, 0.12), transparent 310px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
     var(--bg);
-  background-size: auto, 42px 42px, 42px 42px, auto;
   color: var(--text);
 }
 
@@ -265,10 +262,7 @@ pre {
   min-height: 0;
   margin: 0;
   border: 0;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    var(--code-bg);
-  background-size: 42px 42px, auto;
+  background: var(--code-bg);
   color: var(--text);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.9rem;

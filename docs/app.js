@@ -46,7 +46,8 @@ function convert() {
   if (!text.trim()) {
     currentLua = "";
     currentNotes = [];
-    output.textContent = "";
+    output.textContent = "Generated Lua will appear here.";
+    output.classList.add("is-empty");
     renderNotes([]);
     setStatus("Waiting for input");
     copyButton.disabled = true;
@@ -58,6 +59,7 @@ function convert() {
   currentLua = result.lua;
   currentNotes = result.unknown;
   output.textContent = result.lua;
+  output.classList.remove("is-empty");
   renderNotes(result.unknown);
   copyButton.disabled = false;
   downloadButton.disabled = false;

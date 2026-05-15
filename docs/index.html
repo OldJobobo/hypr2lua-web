@@ -8,8 +8,11 @@
   </head>
   <body>
     <header class="app-header">
-      <div>
-        <p class="eyebrow">Omarchy theme converter</p>
+      <div class="brand-block">
+        <div class="brand-row">
+          <div class="brand-mark" aria-hidden="true">h2l</div>
+          <p class="eyebrow">Omarchy theme converter</p>
+        </div>
         <h1>hypr2lua</h1>
         <p class="lede">Convert Omarchy theme <code>hyprland.conf</code> snippets to Hyprland 0.55+ <code>hyprland.lua</code>.</p>
       </div>
@@ -37,14 +40,14 @@
             <button id="clearButton" type="button">Clear</button>
           </div>
         </div>
-        <textarea id="input" spellcheck="false" aria-label="hyprland.conf input"></textarea>
+        <textarea id="input" spellcheck="false" aria-label="hyprland.conf input" placeholder="Paste hyprland.conf here..."></textarea>
       </section>
 
       <section class="editor-panel" aria-labelledby="outputTitle">
         <div class="panel-head">
           <h2 id="outputTitle">Output</h2>
           <div class="actions">
-            <button id="convertButton" type="button">Convert</button>
+            <button id="convertButton" class="primary-action" type="button">Convert</button>
             <button id="copyButton" type="button" disabled>Copy</button>
             <button id="downloadButton" type="button" disabled>Download</button>
           </div>

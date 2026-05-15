@@ -101,6 +101,24 @@ code {
   gap: 10px;
 }
 
+.download-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 clamp(16px, 4vw, 48px) 16px;
+  border: 1px solid rgba(119, 199, 178, 0.38);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: rgba(119, 199, 178, 0.08);
+}
+
+.download-strip p {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .status[data-tone="ok"] {
   border-color: rgba(119, 199, 178, 0.5);
   color: var(--ok);
@@ -174,6 +192,12 @@ button:hover:not(:disabled),
 .button-link:hover {
   border-color: rgba(119, 199, 178, 0.55);
   background: #34383a;
+}
+
+.primary-link {
+  flex: 0 0 auto;
+  border-color: rgba(119, 199, 178, 0.55);
+  background: #29443e;
 }
 
 button:disabled {
@@ -273,6 +297,11 @@ pre {
 
   .button-link {
     width: 100%;
+  }
+
+  .download-strip {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .app-shell {

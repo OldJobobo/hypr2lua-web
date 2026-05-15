@@ -30,6 +30,7 @@ body {
   color: var(--text);
 }
 
+a,
 button,
 textarea,
 pre {
@@ -94,6 +95,12 @@ code {
   text-align: center;
 }
 
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .status[data-tone="ok"] {
   border-color: rgba(119, 199, 178, 0.5);
   color: var(--ok);
@@ -145,7 +152,8 @@ code {
   gap: 8px;
 }
 
-button {
+button,
+.button-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -158,10 +166,12 @@ button {
   color: var(--text);
   font-size: 0.88rem;
   font-weight: 650;
+  text-decoration: none;
   cursor: pointer;
 }
 
-button:hover:not(:disabled) {
+button:hover:not(:disabled),
+.button-link:hover {
   border-color: rgba(119, 199, 178, 0.55);
   background: #34383a;
 }
@@ -254,6 +264,15 @@ pre {
   .status {
     width: 100%;
     text-align: left;
+  }
+
+  .header-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .button-link {
+    width: 100%;
   }
 
   .app-shell {

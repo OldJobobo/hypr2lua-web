@@ -9,7 +9,7 @@ uploaded config data stays on the user's machine.
 The hosted site also includes a copy of the executable CLI script at:
 
 ```text
-/hypr2lua
+/hypr2lua.py
 ```
 
 ## Run Locally

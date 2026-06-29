@@ -2,6 +2,13 @@ const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const COLOR_RE = /^(?:rgb|rgba)\([0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?\)$/;
 const ANGLE_RE = /^(-?(?:\d+(?:\.\d*)?|\.\d+))deg$/;
 const DEPRECATED_KEYS = new Set(["ignore_window"]);
+const BIND_OPTIONS = {
+  bind: {},
+  bindl: { locked: "true" },
+  bindr: { release: "true" },
+  binde: { repeating: "true" },
+  bindm: { mouse: "true" }
+};
 
 function assign(key, value, lineNo) {
   return { kind: "assign", key, value, lineNo };
@@ -180,6 +187,13 @@ function scalarToLua(value, varNames) {
     return color;
   }
 
+  if (trimmed.startsWith("$")) {
+    const rawName = trimmed.slice(1).trim();
+    if (rawName && varNames.has(rawName)) {
+      return varNames.get(rawName);
+    }
+  }
+
   return quoteLuaString(trimmed);
 }
 
@@ -218,6 +232,163 @@ function blockToTable(item, varNames, unknown) {
 
 function splitCsv(value) {
   return value.split(",").map((part) => part.trim());
+}
+
+function combineKey(modifiers, key, varNames) {
+  if (!modifiers.trim()) {
+    return quoteLuaString(key);
+  }
+  const modValue = scalarToLua(modifiers, varNames);
+  if (String(modValue).startsWith('"')) {
+    return quoteLuaString([modifiers, key].filter(Boolean).join(" + "));
+  }
+  return `${modValue} .. ${quoteLuaString(` + ${key}`)}`;
+}
+
+function dispatchToLua(dispatcher, args) {
+  const normalized = normalizeKey(dispatcher);
+  const value = args.join(", ").trim();
+
+  if (normalized === "exec") {
+    return `hl.dsp.exec_cmd(${quoteLuaString(value)})`;
+  }
+  if (normalized === "workspace") {
+    return `hl.dsp.workspace(${quoteLuaString(value)})`;
+  }
+  if (normalized === "movetoworkspace") {
+    return `hl.dsp.move_to_workspace(${quoteLuaString(value)})`;
+  }
+  if (normalized === "killactive") {
+    return "hl.dsp.kill_active()";
+  }
+  if (normalized === "togglefloating") {
+    return `function()
+  hl.dispatch(hl.dsp.window.float({ action = "toggle" }))
+end`;
+  }
+  if (value) {
+    return `function()
+  hl.dispatch(${quoteLuaString(`${dispatcher} ${value}`)})
+end`;
+  }
+  return `function()
+  hl.dispatch(${quoteLuaString(dispatcher)})
+end`;
+}
+
+function parseBind(key, value, lineNo, varNames, unknown) {
+  const parts = splitCsv(value);
+  if (parts.length < 3) {
+    unknown.push(`line ${lineNo}: unsupported ${key} = ${value}`);
+    return null;
+  }
+
+  const bindKey = normalizeKey(key);
+  const options = BIND_OPTIONS[bindKey] || {};
+  const spec = {
+    key: combineKey(parts[0], parts[1], varNames),
+    action: dispatchToLua(parts[2], parts.slice(3))
+  };
+
+  if (Object.keys(options).length > 0) {
+    spec.options = options;
+  }
+  if (parts[0].includes("$")) {
+    const varName = parts[0].replace(/^\$/, "").trim();
+    if (!varNames.has(varName)) {
+      unknown.push(`line ${lineNo}: bind modifier ${parts[0]} references an unknown variable`);
+    }
+  }
+  return spec;
+}
+
+function parseMonitor(value, lineNo, unknown) {
+  const parts = splitCsv(value);
+  if (parts.length < 4) {
+    unknown.push(`line ${lineNo}: unsupported monitor = ${value}`);
+    return null;
+  }
+
+  const spec = {
+    output: quoteLuaString(parts[0]),
+    mode: quoteLuaString(parts[1]),
+    position: quoteLuaString(parts[2]),
+    scale: scalarToLua(parts[3], new Map())
+  };
+  if (parts.length >= 5 && parts[4]) {
+    spec.transform = scalarToLua(parts[4], new Map());
+  }
+  if (parts.length >= 6 && parts[5]) {
+    spec.mirror = quoteLuaString(parts[5]);
+  }
+  if (parts.length > 6) {
+    unknown.push(`line ${lineNo}: monitor has extra fields that need review`);
+  }
+  return spec;
+}
+
+function parseEnv(value, lineNo, unknown) {
+  const parts = splitCsv(value);
+  if (parts.length < 2) {
+    unknown.push(`line ${lineNo}: unsupported env = ${value}`);
+    return null;
+  }
+  return [quoteLuaString(parts[0]), quoteLuaString(parts.slice(1).join(", "))];
+}
+
+function parseWorkspaceRule(value, varNames) {
+  const parts = splitCsv(value);
+  const spec = {};
+  if (parts.length > 0) {
+    spec.workspace = scalarToLua(parts[0], varNames);
+  }
+  parts.slice(1).forEach((part) => {
+    if (!part) {
+      return;
+    }
+    const separator = part.includes(":") ? ":" : part.includes("=") ? "=" : null;
+    let key;
+    let rawValue;
+    if (separator) {
+      const index = part.indexOf(separator);
+      key = normalizeKey(part.slice(0, index));
+      rawValue = part.slice(index + 1).trim() || "true";
+    } else {
+      const tokens = part.split(/\s+/, 2);
+      key = normalizeKey(tokens[0]);
+      rawValue = tokens.length > 1 ? part.slice(tokens[0].length).trim() : "true";
+    }
+    spec[key] = scalarToLua(rawValue, varNames);
+  });
+  return spec;
+}
+
+function emitBind(spec) {
+  const lines = [`hl.bind(${spec.key}, ${spec.action}`];
+  if (spec.options) {
+    const rendered = tableToLua(spec.options, 0);
+    if (rendered.length === 1) {
+      lines[0] += `, ${rendered[0]})`;
+    } else {
+      lines[0] += `, ${rendered[0]}`;
+      lines.push(...rendered.slice(1, -1), `${rendered[rendered.length - 1]})`);
+    }
+  } else {
+    lines[0] += ")";
+  }
+  return lines;
+}
+
+function emitExecOnce(commands) {
+  if (commands.length === 0) {
+    return [];
+  }
+  const lines = ['hl.on("hyprland.start", function()'];
+  commands.forEach((command) => {
+    lines.push(`  hl.exec_cmd(${quoteLuaString(command)})`);
+  });
+  lines.push("end)");
+  return lines;
 }
 
 function animationEnabledToLua(value) {
@@ -402,6 +573,15 @@ export function convertNodes(nodes, source = null) {
   const curves = [];
   const animations = [];
   const rules = [];
+  const sourceLines = [];
+  const monitors = [];
+  const binds = [];
+  const execs = [];
+  const execOnce = [];
+  const envs = [];
+  const workspaceRules = [];
+  const devices = [];
+  const gestures = [];
 
   nodes.forEach((item) => {
     if (item.kind === "assign") {
@@ -412,8 +592,34 @@ export function convertNodes(nodes, source = null) {
       const key = normalizeKey(item.key);
       if (key === "windowrule") {
         rules.push(["hl.window_rule", parseRuleParts(item.value, varNames)]);
+      } else if (key === "windowrulev2") {
+        rules.push(["hl.window_rule", parseRuleParts(item.value, varNames)]);
       } else if (key === "layerrule") {
         rules.push(["hl.layer_rule", parseRuleParts(item.value, varNames)]);
+      } else if (key === "workspace") {
+        workspaceRules.push(parseWorkspaceRule(item.value, varNames));
+      } else if (key === "monitor") {
+        const parsed = parseMonitor(item.value, item.lineNo, unknown);
+        if (parsed) {
+          monitors.push(parsed);
+        }
+      } else if (key === "env") {
+        const parsed = parseEnv(item.value, item.lineNo, unknown);
+        if (parsed) {
+          envs.push(parsed);
+        }
+      } else if (key === "exec") {
+        execs.push(item.value);
+      } else if (key === "exec_once") {
+        execOnce.push(item.value);
+      } else if (key === "source") {
+        sourceLines.push(item.value);
+        unknown.push(`line ${item.lineNo}: source = ${item.value} needs manual require() path review`);
+      } else if (Object.hasOwn(BIND_OPTIONS, key)) {
+        const parsed = parseBind(key, item.value, item.lineNo, varNames, unknown);
+        if (parsed) {
+          binds.push(parsed);
+        }
       } else {
         unknown.push(`line ${item.lineNo}: unconverted top-level assignment ${item.key} = ${item.value}`);
       }
@@ -455,6 +661,12 @@ export function convertNodes(nodes, source = null) {
       rules.push(["hl.window_rule", blockRuleToSpec(item, varNames)]);
     } else if (blockName === "layerrule") {
       rules.push(["hl.layer_rule", blockRuleToSpec(item, varNames)]);
+    } else if (blockName === "workspace") {
+      workspaceRules.push(blockRuleToSpec(item, varNames));
+    } else if (blockName === "device") {
+      devices.push(blockToTable(item, varNames, unknown));
+    } else if (blockName === "gesture") {
+      gestures.push(blockToTable(item, varNames, unknown));
     } else {
       config[blockName] = blockToTable(item, varNames, unknown);
     }
@@ -473,8 +685,41 @@ export function convertNodes(nodes, source = null) {
     lines.push("");
   }
 
+  sourceLines.forEach((sourceLine) => {
+    lines.push(`-- source = ${sourceLine}`);
+  });
+  if (sourceLines.length > 0) {
+    lines.push("");
+  }
+
   if (Object.keys(config).length > 0) {
     lines.push(...emitCall("hl.config", config), "");
+  }
+
+  monitors.forEach((monitor) => {
+    lines.push(...emitCall("hl.monitor", monitor));
+  });
+  if (monitors.length > 0) {
+    lines.push("");
+  }
+
+  envs.forEach(([name, value]) => {
+    lines.push(`hl.env(${name}, ${value})`);
+  });
+  if (envs.length > 0) {
+    lines.push("");
+  }
+
+  execs.forEach((command) => {
+    lines.push(`hl.exec_cmd(${quoteLuaString(command)})`);
+  });
+  if (execs.length > 0) {
+    lines.push("");
+  }
+
+  lines.push(...emitExecOnce(execOnce));
+  if (execOnce.length > 0) {
+    lines.push("");
   }
 
   curves.forEach(({ name, points }) => {
@@ -495,6 +740,34 @@ export function convertNodes(nodes, source = null) {
     lines.push(...emitCall(call, spec));
   });
   if (rules.length > 0) {
+    lines.push("");
+  }
+
+  workspaceRules.forEach((spec) => {
+    lines.push(...emitCall("hl.workspace_rule", spec));
+  });
+  if (workspaceRules.length > 0) {
+    lines.push("");
+  }
+
+  devices.forEach((spec) => {
+    lines.push(...emitCall("hl.device", spec));
+  });
+  if (devices.length > 0) {
+    lines.push("");
+  }
+
+  gestures.forEach((spec) => {
+    lines.push(...emitCall("hl.gesture", spec));
+  });
+  if (gestures.length > 0) {
+    lines.push("");
+  }
+
+  binds.forEach((spec) => {
+    lines.push(...emitBind(spec));
+  });
+  if (binds.length > 0) {
     lines.push("");
   }
 
@@ -530,6 +803,11 @@ export function convertText(text, source = null) {
 
 export const exampleInput = `$border = rgba(89b4faee)
 $accent = rgb(a6e3a1)
+$mainMod = SUPER
+
+monitor = , preferred, auto, auto
+env = XCURSOR_SIZE, 24
+exec-once = waybar
 
 general {
   gaps_in = 4
@@ -560,4 +838,6 @@ animations {
 }
 
 windowrule = opacity 0.92, match:class = Alacritty
-layerrule = blur, match:namespace = waybar`;
+layerrule = blur, match:namespace = waybar
+workspace = 1, monitor:DP-1, default:true
+bind = $mainMod, Return, exec, foot`;

@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Convert theme-scoped Hyprland hyprlang snippets to Hyprland 0.55 Lua.
-
-This targets Omarchy theme files, not full personal Hyprland configs. It handles
-the common theme surface: variables, general/group/decoration blocks, nested
-blur/shadow blocks, animations, window rules, and layer rules.
-"""
+"""Convert Hyprland hyprlang files to Hyprland 0.55 Lua."""
 
 from __future__ import annotations
 
@@ -40,6 +35,13 @@ IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 COLOR_RE = re.compile(r"^(?:rgb|rgba)\([0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?\)$")
 ANGLE_RE = re.compile(r"^(-?(?:\d+(?:\.\d*)?|\.\d+))deg$")
 DEPRECATED_KEYS = {"ignore_window"}
+BIND_OPTIONS = {
+    "bind": OrderedDict(),
+    "bindl": OrderedDict([("locked", "true")]),
+    "bindr": OrderedDict([("release", "true")]),
+    "binde": OrderedDict([("repeating", "true")]),
+    "bindm": OrderedDict([("mouse", "true")]),
+}
 ANSI_COLORS = {
     "green": "\033[32m",
     "yellow": "\033[33m",
@@ -229,6 +231,11 @@ def scalar_to_lua(value: str, var_names: dict[str, str]) -> object:
     if color is not None:
         return color
 
+    if value.startswith("$"):
+        raw_name = value[1:].strip()
+        if raw_name in var_names:
+            return var_names[raw_name]
+
     return quote_lua_string(value)
 
 
@@ -267,6 +274,135 @@ def block_to_table(block: Block, var_names: dict[str, str], unknown: list[str]) 
 
 def split_csv(value: str) -> list[str]:
     return [part.strip() for part in value.split(",")]
+
+
+def combine_key(modifiers: str, key: str, var_names: dict[str, str]) -> str:
+    if not modifiers.strip():
+        return quote_lua_string(key)
+    mod_value = scalar_to_lua(modifiers, var_names)
+    if str(mod_value).startswith('"'):
+        return quote_lua_string(" + ".join(part for part in [modifiers, key] if part))
+    return f"{mod_value} .. {quote_lua_string(f' + {key}')}"
+
+
+def dispatch_to_lua(dispatcher: str, args: list[str]) -> str:
+    normalized = normalize_key(dispatcher)
+    value = ", ".join(args).strip()
+
+    if normalized == "exec":
+        return f"hl.dsp.exec_cmd({quote_lua_string(value)})"
+    if normalized == "workspace":
+        return f"hl.dsp.workspace({quote_lua_string(value)})"
+    if normalized == "movetoworkspace":
+        return f"hl.dsp.move_to_workspace({quote_lua_string(value)})"
+    if normalized == "killactive":
+        return "hl.dsp.kill_active()"
+    if normalized == "togglefloating":
+        return 'function()\n  hl.dispatch(hl.dsp.window.float({ action = "toggle" }))\nend'
+    if value:
+        return f"function()\n  hl.dispatch({quote_lua_string(f'{dispatcher} {value}')})\nend"
+    return f"function()\n  hl.dispatch({quote_lua_string(dispatcher)})\nend"
+
+
+def parse_bind(
+    key: str,
+    value: str,
+    line_no: int,
+    var_names: dict[str, str],
+    unknown: list[str],
+) -> OrderedDict[str, object] | None:
+    parts = split_csv(value)
+    if len(parts) < 3:
+        unknown.append(f"line {line_no}: unsupported {key} = {value}")
+        return None
+
+    bind_key = normalize_key(key)
+    spec: OrderedDict[str, object] = OrderedDict()
+    spec["key"] = combine_key(parts[0], parts[1], var_names)
+    spec["action"] = dispatch_to_lua(parts[2], parts[3:])
+    options = BIND_OPTIONS.get(bind_key, OrderedDict())
+    if options:
+        spec["options"] = options
+    if "$" in parts[0]:
+        var_name = parts[0].lstrip("$").strip()
+        if var_name not in var_names:
+            unknown.append(f"line {line_no}: bind modifier {parts[0]} references an unknown variable")
+    return spec
+
+
+def parse_monitor(value: str, line_no: int, unknown: list[str]) -> OrderedDict[str, object] | None:
+    parts = split_csv(value)
+    if len(parts) < 4:
+        unknown.append(f"line {line_no}: unsupported monitor = {value}")
+        return None
+
+    spec: OrderedDict[str, object] = OrderedDict()
+    spec["output"] = quote_lua_string(parts[0])
+    spec["mode"] = quote_lua_string(parts[1])
+    spec["position"] = quote_lua_string(parts[2])
+    spec["scale"] = scalar_to_lua(parts[3], {})
+    if len(parts) >= 5 and parts[4]:
+        spec["transform"] = scalar_to_lua(parts[4], {})
+    if len(parts) >= 6 and parts[5]:
+        spec["mirror"] = quote_lua_string(parts[5])
+    if len(parts) > 6:
+        unknown.append(f"line {line_no}: monitor has extra fields that need review")
+    return spec
+
+
+def parse_env(value: str, line_no: int, unknown: list[str]) -> tuple[str, str] | None:
+    parts = split_csv(value)
+    if len(parts) < 2:
+        unknown.append(f"line {line_no}: unsupported env = {value}")
+        return None
+    return quote_lua_string(parts[0]), quote_lua_string(", ".join(parts[1:]))
+
+
+def parse_workspace_rule(value: str, var_names: dict[str, str]) -> OrderedDict[str, object]:
+    parts = split_csv(value)
+    spec: OrderedDict[str, object] = OrderedDict()
+    if parts:
+        spec["workspace"] = scalar_to_lua(parts[0], var_names)
+    for part in parts[1:]:
+        if not part:
+            continue
+        separator = ":" if ":" in part else "=" if "=" in part else None
+        if separator:
+            index = part.index(separator)
+            key = normalize_key(part[:index])
+            raw_value = part[index + 1 :].strip() or "true"
+        else:
+            tokens = part.split(None, 1)
+            key = normalize_key(tokens[0])
+            raw_value = tokens[1] if len(tokens) > 1 else "true"
+        spec[key] = scalar_to_lua(raw_value, var_names)
+    return spec
+
+
+def emit_bind(spec: OrderedDict[str, object]) -> list[str]:
+    lines = [f"hl.bind({spec['key']}, {spec['action']}"]
+    options = spec.get("options")
+    if isinstance(options, OrderedDict):
+        rendered = table_to_lua(options, 0)
+        if len(rendered) == 1:
+            lines[0] += f", {rendered[0]})"
+        else:
+            lines[0] += f", {rendered[0]}"
+            lines.extend(rendered[1:-1])
+            lines.append(f"{rendered[-1]})")
+    else:
+        lines[0] += ")"
+    return lines
+
+
+def emit_exec_once(commands: list[str]) -> list[str]:
+    if not commands:
+        return []
+    lines = ['hl.on("hyprland.start", function()']
+    for command in commands:
+        lines.append(f"  hl.exec_cmd({quote_lua_string(command)})")
+    lines.append("end)")
+    return lines
 
 
 def parse_animation(value: str) -> OrderedDict[str, object] | None:
@@ -422,6 +558,15 @@ def convert_nodes(nodes: list[Node], source: pathlib.Path | None = None) -> tupl
     curves: list[tuple[str, list[str]]] = []
     animations: list[OrderedDict[str, object]] = []
     rules: list[tuple[str, OrderedDict[str, object]]] = []
+    source_lines: list[str] = []
+    monitors: list[OrderedDict[str, object]] = []
+    binds: list[OrderedDict[str, object]] = []
+    execs: list[str] = []
+    exec_once: list[str] = []
+    envs: list[tuple[str, str]] = []
+    workspace_rules: list[OrderedDict[str, object]] = []
+    devices: list[OrderedDict[str, object]] = []
+    gestures: list[OrderedDict[str, object]] = []
 
     for item in nodes:
         if isinstance(item, Assign):
@@ -430,8 +575,31 @@ def convert_nodes(nodes: list[Node], source: pathlib.Path | None = None) -> tupl
             key = normalize_key(item.key)
             if key == "windowrule":
                 rules.append(("hl.window_rule", parse_rule_parts(item.value, var_names)))
+            elif key == "windowrulev2":
+                rules.append(("hl.window_rule", parse_rule_parts(item.value, var_names)))
             elif key == "layerrule":
                 rules.append(("hl.layer_rule", parse_rule_parts(item.value, var_names)))
+            elif key == "workspace":
+                workspace_rules.append(parse_workspace_rule(item.value, var_names))
+            elif key == "monitor":
+                parsed_monitor = parse_monitor(item.value, item.line_no, unknown)
+                if parsed_monitor:
+                    monitors.append(parsed_monitor)
+            elif key == "env":
+                parsed_env = parse_env(item.value, item.line_no, unknown)
+                if parsed_env:
+                    envs.append(parsed_env)
+            elif key == "exec":
+                execs.append(item.value)
+            elif key == "exec_once":
+                exec_once.append(item.value)
+            elif key == "source":
+                source_lines.append(item.value)
+                unknown.append(f"line {item.line_no}: source = {item.value} needs manual require() path review")
+            elif key in BIND_OPTIONS:
+                parsed_bind = parse_bind(key, item.value, item.line_no, var_names, unknown)
+                if parsed_bind:
+                    binds.append(parsed_bind)
             else:
                 unknown.append(f"line {item.line_no}: unconverted top-level assignment {item.key} = {item.value}")
             continue
@@ -464,6 +632,12 @@ def convert_nodes(nodes: list[Node], source: pathlib.Path | None = None) -> tupl
             rules.append(("hl.window_rule", block_rule_to_spec(item, var_names)))
         elif block_name == "layerrule":
             rules.append(("hl.layer_rule", block_rule_to_spec(item, var_names)))
+        elif block_name == "workspace":
+            workspace_rules.append(block_rule_to_spec(item, var_names))
+        elif block_name == "device":
+            devices.append(block_to_table(item, var_names, unknown))
+        elif block_name == "gesture":
+            gestures.append(block_to_table(item, var_names, unknown))
         else:
             config[block_name] = block_to_table(item, var_names, unknown)
 
@@ -478,8 +652,32 @@ def convert_nodes(nodes: list[Node], source: pathlib.Path | None = None) -> tupl
             lines.extend(emit_local(name, value))
         lines.append("")
 
+    for source_line in source_lines:
+        lines.append(f"-- source = {source_line}")
+    if source_lines:
+        lines.append("")
+
     if config:
         lines.extend(emit_call("hl.config", config))
+        lines.append("")
+
+    for monitor in monitors:
+        lines.extend(emit_call("hl.monitor", monitor))
+    if monitors:
+        lines.append("")
+
+    for name, value in envs:
+        lines.append(f"hl.env({name}, {value})")
+    if envs:
+        lines.append("")
+
+    for command in execs:
+        lines.append(f"hl.exec_cmd({quote_lua_string(command)})")
+    if execs:
+        lines.append("")
+
+    lines.extend(emit_exec_once(exec_once))
+    if exec_once:
         lines.append("")
 
     for name, points in curves:
@@ -495,6 +693,26 @@ def convert_nodes(nodes: list[Node], source: pathlib.Path | None = None) -> tupl
     for call, spec in rules:
         lines.extend(emit_call(call, spec))
     if rules:
+        lines.append("")
+
+    for spec in workspace_rules:
+        lines.extend(emit_call("hl.workspace_rule", spec))
+    if workspace_rules:
+        lines.append("")
+
+    for spec in devices:
+        lines.extend(emit_call("hl.device", spec))
+    if devices:
+        lines.append("")
+
+    for spec in gestures:
+        lines.extend(emit_call("hl.gesture", spec))
+    if gestures:
+        lines.append("")
+
+    for spec in binds:
+        lines.extend(emit_bind(spec))
+    if binds:
         lines.append("")
 
     if unknown:
@@ -593,13 +811,13 @@ def convert_path(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Convert Omarchy theme hyprland.conf snippets to Hyprland 0.55 hyprland.lua.",
+        description="Convert Hyprland hyprlang configs to Hyprland 0.55 Lua.",
         epilog=(
-            "Common use: cd into a theme and run `hypr2lua -w`. "
+            "Common use: pass a hyprland.conf file or run inside a config directory with `hypr2lua -w`. "
             "Bulk use: `hypr2lua -r /path/to/themes -w`."
         ),
     )
-    parser.add_argument("paths", nargs="*", type=pathlib.Path, help="hyprland.conf files or theme directories")
+    parser.add_argument("paths", nargs="*", type=pathlib.Path, help="Hyprlang files or config directories")
     parser.add_argument(
         "-r",
         "--themes-root",
@@ -632,7 +850,7 @@ def main() -> int:
         if (cwd / "hyprland.conf").is_file():
             paths.append(cwd)
         else:
-            parser.error("run inside a theme directory, pass a file/directory, or use -r /path/to/themes")
+            parser.error("run inside a config directory, pass a file/directory, or use -r /path/to/themes")
 
     if args.sandbox_root:
         paths = prepare_sandbox_paths(paths, args.sandbox_root)

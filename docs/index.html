@@ -9,9 +9,9 @@
   <body>
     <header class="app-header">
       <div class="brand-block">
-        <p class="eyebrow">Omarchy theme converter</p>
+        <p class="eyebrow">Hyprlang converter</p>
         <h1>hypr2lua</h1>
-        <p class="lede">Convert Omarchy theme <code>hyprland.conf</code> snippets to Hyprland 0.55+ <code>hyprland.lua</code>.</p>
+        <p class="lede">Convert Hyprland <code>hyprlang</code> config files to Hyprland 0.55+ Lua.</p>
       </div>
       <div class="header-tools">
         <div class="status" id="statusText" data-tone="neutral">Waiting for input</div>
@@ -31,13 +31,13 @@
         <div class="panel-head">
           <h2 id="inputTitle">Input</h2>
           <div class="actions">
-            <input id="uploadInput" type="file" accept=".conf,text/plain" hidden>
+            <input id="uploadInput" type="file" accept=".conf,.hl,.txt,text/plain" hidden>
             <button id="uploadButton" type="button">Upload</button>
             <button id="exampleButton" type="button">Example</button>
             <button id="clearButton" type="button">Clear</button>
           </div>
         </div>
-        <textarea id="input" spellcheck="false" aria-label="hyprland.conf input" placeholder="Paste hyprland.conf here..."></textarea>
+        <textarea id="input" spellcheck="false" aria-label="Hyprlang input" placeholder="Paste Hyprlang config here..."></textarea>
       </section>
 
       <section class="editor-panel" aria-labelledby="outputTitle">
@@ -49,13 +49,13 @@
             <button id="downloadButton" type="button" disabled>Download</button>
           </div>
         </div>
-        <pre id="output" aria-label="Generated hyprland.lua output"></pre>
+        <pre id="output" aria-label="Generated Hyprland Lua output"></pre>
       </section>
 
       <section class="notes-panel" aria-labelledby="notesTitle">
         <div>
           <h2 id="notesTitle">Review Notes</h2>
-          <p>This tool handles variables, config blocks, nested blur/shadow blocks, animations, window rules, and layer rules.</p>
+          <p>This tool handles common full-config directives and keeps review notes for lines that need manual migration.</p>
         </div>
         <ul id="notes"></ul>
       </section>

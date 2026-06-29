@@ -1,10 +1,11 @@
 # hypr2lua-web
 
-Static browser converter for Omarchy theme `hyprland.conf` snippets.
+Static browser converter for Hyprland `hyprlang` config files.
 
-The app converts common theme-scoped Hyprland config into Hyprland 0.55+
-`hyprland.lua` output. Conversion runs entirely in the browser, so pasted or
-uploaded config data stays on the user's machine.
+The app converts common Hyprland config directives into Hyprland 0.55+ Lua
+output. Conversion runs entirely in the browser, so pasted or uploaded config
+data stays on the user's machine. Unsupported or ambiguous lines are kept as
+review notes in the generated output.
 
 The hosted site also includes a copy of the executable CLI script at:
 

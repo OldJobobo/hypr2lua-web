@@ -76,7 +76,7 @@ function downloadLua() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "hyprland.lua";
+  link.download = lastFileName ? lastFileName.replace(/\.[^.]*$/, ".lua") : "hyprland.lua";
   document.body.append(link);
   link.click();
   link.remove();

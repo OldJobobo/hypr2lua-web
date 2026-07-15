@@ -1,10 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { convertText, parseHyprlang, stripComment } from "../docs/converter.js";
+
+test("GitHub Pages footer links to the Ko-fi support page", () => {
+  const html = readFileSync("docs/index.html", "utf8");
+  assert.match(html, /class="support-link"/);
+  assert.match(html, /href="https:\/\/ko-fi\.com\/oldjobobo"/);
+  assert.match(html, /rel="noopener noreferrer"/);
+});
 
 test("stripComment ignores hashes inside quotes", () => {
   assert.equal(stripComment('foo = "bar # baz" # tail'), 'foo = "bar # baz" ');

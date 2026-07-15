@@ -26,6 +26,7 @@
 body {
   min-height: 100vh;
   margin: 0;
+  padding-bottom: 58px;
   background: var(--bg);
   color: var(--text);
 }
@@ -167,7 +168,45 @@ code {
   gap: 14px;
   max-width: var(--page-max);
   margin: 0 auto;
-  padding: 0 var(--page-gutter) 34px;
+  padding: 0 var(--page-gutter) 18px;
+}
+
+.app-footer {
+  position: fixed;
+  right: var(--page-gutter);
+  bottom: 14px;
+  z-index: 10;
+}
+
+.support-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 620;
+  text-decoration: none;
+}
+
+.support-link span {
+  color: var(--accent);
+}
+
+.support-link:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.support-link:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
 }
 
 .editor-panel,
@@ -361,6 +400,10 @@ pre {
 }
 
 @media (max-width: 620px) {
+  body {
+    padding-bottom: 0;
+  }
+
   .app-header {
     padding-top: 20px;
   }
@@ -384,4 +427,12 @@ pre {
   button {
     width: 100%;
   }
+
+  .app-footer {
+    position: static;
+    display: flex;
+    justify-content: center;
+    padding: 0 var(--page-gutter) 24px;
+  }
+
 }
